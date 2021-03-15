@@ -1,88 +1,105 @@
 ﻿using System;
+using System.Linq;
 using UnityEngine;
+
+using LightTracker.Attributes;
 
 namespace LightTracker
 {
     public class ModuleLightTracker : PartModule
     {
-        // Setup KSPFields and set default (false) bool values
+        [KSPField(isPersistant = true)]
+        private bool IsTracking;
+
+        internal enum TrackMode
+        {
+            TargetVessel,
+            ActiveVessel
+        }
 
         [KSPField(isPersistant = true)]
-        private bool IsTrackingCurrentTarget;
+        private TrackMode SelectedTrackMode;
 
         [KSPField(isPersistant = true)]
-        private bool TrackingDisabledField;
+        private bool RestWithoutTarget;
 
-        // Setup UI sliders to control lights in flight and set values
+        [KSPField(guiName = "Tracking Speed", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 5f, maxValue = 180f, stepIncrement = 1f)]
+        public float TrackingSpeed = 45f;
 
-        [KSPField(guiName = "Intensity", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0f, maxValue = 10f, stepIncrement = 0.05f)]
-        public float IntensityField = 1f;
+        [KSPField(guiName = "Resting Pitch", guiActive = true, isPersistant = true), UI_FloatRange(minValue = -90f, maxValue = 90f, stepIncrement = 1f, scene = UI_Scene.Flight)]
+        public float RestingPitch = 0f;
 
-        [KSPField(guiName = "Range", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 1f, maxValue = 5f, stepIncrement = 0.05f)]
-        public float RangeField = 1f;
+        [KSPField(guiName = "Resting Yaw", guiActive = true, isPersistant = true), UI_FloatRange(minValue = -180f, maxValue = 180f, stepIncrement = 1f, scene = UI_Scene.Flight)]
+        public float RestingYaw = 0f;
 
-        [KSPField(guiName = "Cone Size", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 1f, maxValue = 80f, stepIncrement = 1f)]
-        public float ConeAngleField = 30f;
+        [LightProperty, KSPField(guiName = "Intensity", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0f, maxValue = 10f, stepIncrement = 0.05f)]
+        public float LightIntensity = 1f;
 
-        [KSPField(guiName = "Light R", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
-        public float RColorField = 1f;
+        [LightProperty, KSPField(guiName = "Range", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 1f, maxValue = 5f, stepIncrement = 0.05f)]
+        public float LightRange = 1f;
 
-        [KSPField(guiName = "Light G", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
-        public float GColorField = 1f;
+        [LightProperty, KSPField(guiName = "Cone Size", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 1f, maxValue = 80f, stepIncrement = 1f)]
+        public float LightConeAngle = 30f;
 
-        [KSPField(guiName = "Light B", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
-        public float BColorField = 1f;
+        [LightProperty, KSPField(guiName = "Light R", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
+        public float LightColorR = 1f;
 
-        // Add right click menu fields and events
+        [LightProperty, KSPField(guiName = "Light G", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
+        public float LightColorG = 1f;
 
-        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Tracking: Disabled")]
-        public void ActivateEvent()
+        [LightProperty, KSPField(guiName = "Light B", guiActive = true, isPersistant = true), UI_FloatRange(minValue = 0.00f, maxValue = 1f, stepIncrement = 0.05f, scene = UI_Scene.Flight)]
+        public float LightColorB = 1f;
+
+        // Tracking on/off
+        [KSPEvent(guiActive = true, guiActiveEditor = true)]
+        public void ToggleTracking()
         {
-            TrackingDisabledField = false;
-            Events["ActivateEvent"].active = false;
-            Events["DeactivateEvent"].active = true;
+            IsTracking = !IsTracking;
+            UpdateTrackingControl();
+        }
+        private void UpdateTrackingControl()
+        {
+            Events["ToggleTracking"].guiName = $"Tracking: {(IsTracking ? "Enabled" : "Disabled")}";
         }
 
-        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Tracking: Enabled")]
-        public void DeactivateEvent()
+        // Track mode cycle
+        [KSPEvent(guiActive = true, guiActiveEditor = true)]
+        public void CycleTrackMode()
         {
-            TrackingDisabledField = true;
-            Events["ActivateEvent"].active = true;
-            Events["DeactivateEvent"].active = false;
+            SelectedTrackMode = SelectedTrackMode.Next();
+            UpdateTrackModeControl();
         }
-
-        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Target: Current Target")]
-        public void TrackCurrentTargetEvent()
+        private void UpdateTrackModeControl()
         {
-            IsTrackingCurrentTarget = false;
-            Events["TrackCurrentTargetEvent"].active = false;
-            Events["TrackActiveVesselEvent"].active = true;
+            Events["CycleTrackMode"].guiName = $"Targeting: {LabelFor(SelectedTrackMode)}";
         }
-
-        [KSPEvent(guiActive = true, guiActiveEditor = true, guiName = "Target: Active Vessel")]
-        public void TrackActiveVesselEvent()
+        private string LabelFor(TrackMode mode)
         {
-            IsTrackingCurrentTarget = true;
-            Events["TrackCurrentTargetEvent"].active = true;
-            Events["TrackActiveVesselEvent"].active = false;
-        }
-
-        public override void OnStart(PartModule.StartState state)
-        {
-            // Initialize lights to use custom values saved from KSP fields
-
-            var unitylight = part.GetComponentInChildren<Light>();
-            var lightColor = new Color
+            switch (mode)
             {
-                r = RColorField * IntensityField,
-                g = GColorField * IntensityField,
-                b = BColorField * IntensityField
-            };
-            unitylight.range = 100 * (float)Math.Pow(RangeField, RangeField);
-            unitylight.color = lightColor;
-            unitylight.spotAngle = ConeAngleField;
+                case TrackMode.ActiveVessel:
+                    return "Active vessel";
+                case TrackMode.TargetVessel:
+                    return "Target vessel";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mode));
+            }
+        }
 
+        // Rest without target on/off
+        [KSPEvent(guiActive = true, guiActiveEditor = true)]
+        public void ToggleRestWithoutTarget()
+        {
+            RestWithoutTarget = !RestWithoutTarget;
+            UpdateRestWithoutTargetControl();
+        }
+        private void UpdateRestWithoutTargetControl()
+        {
+            Events["ToggleRestWithoutTarget"].guiName = $"When no target: {(RestWithoutTarget ? "Return to rest" : "Keep orientation")}";
+        }
 
+        public override void OnStart(StartState state)
+        {
             // Disable stock UI elements that are unnecessary from ModuleAnimateGeneric... assuming mouse will be used instead
             foreach (var module in part.FindModulesImplementing<ModuleAnimateGeneric>())
             {
@@ -96,166 +113,181 @@ namespace LightTracker
                 module.Fields["endEventGUIName"].guiActiveEditor = false;
                 module.Events["Toggle"].guiActiveEditor = false;
                 module.Fields["status"].guiActiveEditor = false;
-                if (module.animationName == "lamptilt")
-                {
-                    module.Fields["deployPercent"].guiName = "Tilt";
-                }
-                else if (module.animationName == "lamprotate")
-                {
-                    module.Fields["deployPercent"].guiName = "Rotate";
-                }
             }
 
-            // Add events to the UI sliders instead of checking every frame
-            UI_FloatRange UIRangeField;
+            // Hook up light props to change the underlying Unity light on the fly
+            var lightFieldsNames = GetType()
+                .GetFields()
+                .Where(prop => Attribute.IsDefined(prop, typeof(LightPropertyAttribute)))
+                .Select(prop => prop.Name);
 
-            UIRangeField = (UI_FloatRange)Fields["IntensityField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["RangeField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["ConeAngleField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["RColorField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["GColorField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["BColorField"].uiControlFlight;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["IntensityField"].uiControlEditor;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["RangeField"].uiControlEditor;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            UIRangeField = (UI_FloatRange)Fields["ConeAngleField"].uiControlEditor;
-            UIRangeField.onFieldChanged += OnUISliderChange;
-
-            // Initialize scene start values for the right click menu buttons
-            if (TrackingDisabledField == false)
+            foreach (var fieldName in lightFieldsNames)
             {
-                Events["ActivateEvent"].active = false;
-                Events["DeactivateEvent"].active = true;
+                Fields[fieldName].uiControlFlight.onFieldChanged += OnLightSettingChanged;
+                Fields[fieldName].uiControlEditor.onFieldChanged += OnLightSettingChanged;
             }
-            else
-            {
-                Events["ActivateEvent"].active = true;
-                Events["DeactivateEvent"].active = false;
-            }
-            if (IsTrackingCurrentTarget == true)
-            {
-                Events["TrackCurrentTargetEvent"].active = true;
-                Events["TrackActiveVesselEvent"].active = false;
-            }
-            else
-            {
-                Events["TrackCurrentTargetEvent"].active = false;
-                Events["TrackActiveVesselEvent"].active = true;
-            }
+
+            UpdateTrackingControl();
+            UpdateTrackModeControl();
+            UpdateRestWithoutTargetControl();
+
+            base.OnStart(state);
         }
 
+        public override void OnStartFinished(StartState state)
+        {
+            ApplyLightSettings();
+            base.OnStartFinished(state);
+        }
+
+        #region TrackingLogic
+
+        // Get tracked target *position* (at which light should point)
+        Vector3? GetTrackTarget(TrackMode mode)
+        {
+            switch (mode)
+            {
+                case TrackMode.ActiveVessel:
+                    {
+                        if (vessel == FlightGlobals.ActiveVessel)
+                            return null;
+
+                        return FlightGlobals.ActiveVessel?.transform.position;
+                    }
+
+                case TrackMode.TargetVessel:
+                    {
+                        if (vessel == vessel?.targetObject?.GetVessel())
+                            return null;
+
+                        return vessel?.targetObject?.GetTransform().position;
+                    }
+
+                default:
+                    return null;
+            }
+        }
+        Vector3? GetTrackTarget() => GetTrackTarget(SelectedTrackMode);
+
+        // Get the direction for light to point at a target
+        Vector3? GetTrackDirection()
+        {
+            Vector3? target = GetTrackTarget();
+            if (target.HasValue)
+            {
+                Transform lightCanTransform = transform.GetChild(0).GetChild(0);
+                return target - lightCanTransform.position;
+            }
+            return null;
+        }
+
+        // Get the direction for light to point at without target (based on settings)
+        Vector3 GetRestingDirection()
+        {
+            Quaternion yawRotation = Quaternion.AngleAxis(RestingYaw, transform.up);
+            Quaternion pitchRotation = Quaternion.AngleAxis(RestingPitch, yawRotation * transform.right);
+
+            return pitchRotation * (yawRotation * transform.forward);
+        }
+
+        // Get current desired light forward direction (based on current setting)
+        Vector3? GetTargetDirection()
+        {
+            if (IsTracking)
+                return GetTrackDirection() ?? (RestWithoutTarget ? GetRestingDirection() : (Vector3?) null);
+            else
+                return GetRestingDirection();
+        }
 
         public void LateUpdate()
         {
-            // Check to make sure tracking isn't disabled and that there is a valid vessel attached to the part
-            if (!TrackingDisabledField && part.vessel != null)
-            {
-                // Are we tracking the current target?
-                if (IsTrackingCurrentTarget)
-                {
-                    // Check to prevent NRE's
-                    if (vessel?.targetObject != null)
-                    {
-                        if (vessel != vessel.targetObject.GetVessel())
-                        {
-                            TrackTarget(vessel.targetObject.GetTransform());
-                        }
-                    }
-                }
-                // or active vessel is default case
-                else
-                {
-                    if (vessel != FlightGlobals.ActiveVessel)
-                    {
-                        TrackTarget(FlightGlobals.ActiveVessel.transform);
-                    }
-                }
-            }
+            if (part.vessel == null)
+                return;
+
+            var targetDir = GetTargetDirection();
+            if (targetDir.HasValue)
+                TurnTowards(targetDir.Value);
         }
 
-        private void TrackTarget(Transform target)
+        // Turn towards given forward direction respecting tracking speed
+        private void TurnTowards(Vector3 forward)
         {
-            //set transforms to variables
             Transform baseTransform = transform.GetChild(0);
             Transform lightCanTransform = transform.GetChild(0).GetChild(0);
 
-            //calculate the directional vector, then calculate Quaternion
-            Vector3 dir = target.transform.position - lightCanTransform.position;
-            Quaternion lookRot = Quaternion.LookRotation(dir, lightCanTransform.up);
+            Quaternion targetRot = Quaternion.LookRotation(forward, lightCanTransform.up);
+            Quaternion lookRot = Quaternion.RotateTowards(lightCanTransform.rotation, targetRot, TrackingSpeed * Time.deltaTime);
 
-            //set the base rotation to the lookrotation and set x and z to 0 to only rotate on y
             baseTransform.rotation = lookRot;
             baseTransform.localEulerAngles = new Vector3(0, baseTransform.localEulerAngles.y, 0);
 
-            //set the lightCanTransform rotation to the lookrotation and set the y and z to 0 to only rotate on x
             lightCanTransform.rotation = lookRot;
             lightCanTransform.localEulerAngles = new Vector3(lightCanTransform.localEulerAngles.x, 0, 0);
         }
 
-        // Updates the Unity light object to override the normal LightModule.  Allows setting of RGB, Range, Spot angle
-        private void OnUISliderChange(BaseField field, object obj)
+        #endregion
+        #region LightPropertiesLogic
+
+        private static void ApplyLightSettings(Light light, Color color, float intensity, float range, float spotAngle)
         {
-            // In flight logic, no symmetry
-            if (!HighLogic.LoadedSceneIsEditor)
+            var scaledColor = new Color
             {
-                var lightColor = new Color
-                {
-                    r = RColorField * IntensityField,
-                    g = GColorField * IntensityField,
-                    b = BColorField * IntensityField
-                };
-                var unitylight = part.GetComponentInChildren<Light>();
-                unitylight.range = 100 * (float)Math.Pow(RangeField, RangeField);
-                unitylight.color = lightColor;
-                unitylight.spotAngle = ConeAngleField;
-            }
+                r = color.r * intensity,
+                g = color.g * intensity,
+                b = color.b * intensity
+            };
+            light.range = 100 * (float) Math.Pow(range, range);
+            light.color = scaledColor;
+            light.spotAngle = spotAngle;
+        }
 
-            // Handle Symmetry in editor
-            else
+        private void ApplyLightSettings(Light light)
+        {
+            var color = new Color
             {
-                var modulelight = part.FindModuleImplementing<ModuleLight>();
+                r = LightColorR,
+                g = LightColorG,
+                b = LightColorB
+            };
+            ApplyLightSettings(light, color, LightIntensity, LightRange, LightConeAngle);
+        }
 
-                var lightColor = new Color
-                {
-                    r = modulelight.lightR * IntensityField,
-                    g = modulelight.lightG * IntensityField,
-                    b = modulelight.lightB * IntensityField
-                };
-                var unitylight = part.GetComponentInChildren<Light>();
-                unitylight.range = 100 * (float)Math.Pow(RangeField, RangeField);
-                unitylight.color = lightColor;
-                unitylight.spotAngle = ConeAngleField;
-                RColorField = modulelight.lightR;
-                GColorField = modulelight.lightG;
-                BColorField = modulelight.lightB;
+        // Apply prop settings to underlying Unity light
+        public void ApplyLightSettings()
+        {
+            var light = part.GetComponentInChildren<Light>();
+            ApplyLightSettings(light);
+        }
 
-                foreach (var part in part.symmetryCounterparts)
+        // Read RGB values from stock KSP light module and copy to local props - for tweaking in the editor
+        public void ReadStockLightColorValues()
+        {
+            var kspLight = part.FindModuleImplementing<ModuleLight>();
+            LightColorR = kspLight.lightR;
+            LightColorG = kspLight.lightG;
+            LightColorB = kspLight.lightB;
+        }
+
+        // Updates underlying Unity lights with selected prop values
+        // In the editor RGB settings are pulled from stock KSP light module sliders
+        private void OnLightSettingChanged(BaseField field, object obj)
+        {
+            if (HighLogic.LoadedSceneIsEditor)
+            {
+                ReadStockLightColorValues();
+
+                foreach (var otherPart in part.symmetryCounterparts)
                 {
-                    var lighttrackermodule = part.FindModuleImplementing<ModuleLightTracker>();
-                    unitylight = part.GetComponentInChildren<Light>();
-                    unitylight.range = 100 * (float)Math.Pow(RangeField, RangeField);
-                    unitylight.color = lightColor;
-                    unitylight.spotAngle = ConeAngleField;
-                    lighttrackermodule.RColorField = modulelight.lightR;
-                    lighttrackermodule.GColorField = modulelight.lightG;
-                    lighttrackermodule.BColorField = modulelight.lightB;
+                    var otherPartTracker = otherPart.FindModuleImplementing<ModuleLightTracker>();
+
+                    otherPartTracker.ReadStockLightColorValues();
+                    otherPartTracker.ApplyLightSettings();
                 }
             }
+
+            ApplyLightSettings();
         }
+
+        #endregion
     }
 }

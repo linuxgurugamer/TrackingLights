@@ -55,6 +55,7 @@
     <Compile Include="InstallChecker.cs" />
     <Compile Include="ModuleLightTracker.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+	<Compile Include="Helpers.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="AssemblyVersion.tt">
